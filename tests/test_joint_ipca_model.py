@@ -22,6 +22,46 @@ def test_lookup_table_joint_model_is_abstract() -> None:
         LookupTableJointModel(model_family="ols")
 
 
+def test_rolling_ols_baseline_produces_test_period_weights() -> None:
+    from eapctf.ctf.baselines import RollingOLSBaseline
+
+    chars = pd.DataFrame(
+        {
+            "id": [1, 2, 1, 2, 1, 2],
+            "eom": [
+                "2020-01-31",
+                "2020-01-31",
+                "2020-02-29",
+                "2020-02-29",
+                "2020-03-31",
+                "2020-03-31",
+            ],
+            "eom_ret": [
+                "2020-01-31",
+                "2020-01-31",
+                "2020-02-29",
+                "2020-02-29",
+                "2020-03-31",
+                "2020-03-31",
+            ],
+            "ret_exc_lead1m": [0.01, -0.01, 0.02, -0.02, 0.03, -0.03],
+            "ctff_test": [False, False, False, False, True, True],
+            "f1": [1.0, -1.0, 1.2, -1.2, 1.1, -1.1],
+            "f2": [0.5, -0.5, 0.6, -0.6, 0.55, -0.55],
+        }
+    )
+    features = ["f1", "f2"]
+
+    model = RollingOLSBaseline(window_length=2, min_train_rows=3, rank_transform=False)
+    weights = model.run(chars, features)
+
+    assert list(weights.columns) == ["id", "eom", "w"]
+    assert len(weights) == 2
+    assert set(weights["id"]) == {1, 2}
+    assert set(pd.to_datetime(weights["eom"])) == {pd.Timestamp("2020-03-31")}
+    assert np.isfinite(weights["w"]).all()
+
+
 def test_generic_joint_model_supports_non_ipca_model_family() -> None:
     from eapctf.ctf.uncertainty import HistoricalWeightInstabilityModel
 
