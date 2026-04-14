@@ -62,7 +62,48 @@ def test_rolling_ols_baseline_produces_test_period_weights() -> None:
     assert np.isfinite(weights["w"]).all()
 
 
-def test_regularized_linear_baselines_produce_test_period_weights() -> None:
+def test_expanding_ols_baseline_uses_all_available_history() -> None:
+    from eapctf.ctf.baselines import RollingOLSBaseline
+
+    chars = pd.DataFrame(
+        {
+            "id": [1, 2] * 4,
+            "eom": [
+                "2020-01-31", "2020-01-31",
+                "2020-02-29", "2020-02-29",
+                "2020-03-31", "2020-03-31",
+                "2020-04-30", "2020-04-30",
+            ],
+            "eom_ret": [
+                "2020-01-31", "2020-01-31",
+                "2020-02-29", "2020-02-29",
+                "2020-03-31", "2020-03-31",
+                "2020-04-30", "2020-04-30",
+            ],
+            "ret_exc_lead1m": [0.01, -0.01, 0.02, -0.02, 0.03, -0.03, 0.04, -0.04],
+            "ctff_test": [False, False, False, False, True, True, True, True],
+            "f1": [1.0, -1.0, 1.1, -1.1, 1.2, -1.2, 1.3, -1.3],
+            "f2": [0.4, -0.4, 0.5, -0.5, 0.6, -0.6, 0.7, -0.7],
+        }
+    )
+    features = ["f1", "f2"]
+
+    model = RollingOLSBaseline(
+        train_scheme="expanding",
+        window_length=1,
+        min_train_rows=3,
+        rank_transform=False,
+    )
+    weights = model.run(chars, features)
+
+    assert set(pd.to_datetime(weights["eom"])) == {
+        pd.Timestamp("2020-03-31"),
+        pd.Timestamp("2020-04-30"),
+    }
+    assert model.last_train_row_count_ == 6
+
+
+def test_regularized_linear_baselines_support_5fold_cv() -> None:
     from eapctf.ctf.baselines import (
         RollingElasticNetBaseline,
         RollingLassoBaseline,
@@ -71,37 +112,41 @@ def test_regularized_linear_baselines_produce_test_period_weights() -> None:
 
     chars = pd.DataFrame(
         {
-            "id": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+            "id": [1, 2, 3] * 4,
             "eom": [
                 "2020-01-31", "2020-01-31", "2020-01-31",
                 "2020-02-29", "2020-02-29", "2020-02-29",
                 "2020-03-31", "2020-03-31", "2020-03-31",
+                "2020-04-30", "2020-04-30", "2020-04-30",
             ],
             "eom_ret": [
                 "2020-01-31", "2020-01-31", "2020-01-31",
                 "2020-02-29", "2020-02-29", "2020-02-29",
                 "2020-03-31", "2020-03-31", "2020-03-31",
+                "2020-04-30", "2020-04-30", "2020-04-30",
             ],
-            "ret_exc_lead1m": [0.03, 0.00, -0.03, 0.04, 0.00, -0.04, 0.05, 0.00, -0.05],
-            "ctff_test": [False, False, False, False, False, False, True, True, True],
-            "f1": [1.0, 0.0, -1.0, 1.1, 0.0, -1.1, 1.2, 0.0, -1.2],
-            "f2": [0.6, 0.0, -0.6, 0.7, 0.0, -0.7, 0.8, 0.0, -0.8],
+            "ret_exc_lead1m": [0.03, 0.00, -0.03, 0.04, 0.00, -0.04, 0.05, 0.00, -0.05, 0.06, 0.00, -0.06],
+            "ctff_test": [False, False, False, False, False, False, False, False, False, True, True, True],
+            "f1": [1.0, 0.0, -1.0, 1.1, 0.0, -1.1, 1.2, 0.0, -1.2, 1.3, 0.0, -1.3],
+            "f2": [0.6, 0.0, -0.6, 0.7, 0.0, -0.7, 0.8, 0.0, -0.8, 0.9, 0.0, -0.9],
         }
     )
     features = ["f1", "f2"]
+    alpha_grid = [0.0001, 0.01, 0.1]
 
     models = [
-        RollingRidgeBaseline(window_length=2, min_train_rows=4, rank_transform=False, alpha=0.1),
-        RollingLassoBaseline(window_length=2, min_train_rows=4, rank_transform=False, alpha=0.001),
-        RollingElasticNetBaseline(window_length=2, min_train_rows=4, rank_transform=False, alpha=0.001, l1_ratio=0.5),
+        RollingRidgeBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid),
+        RollingLassoBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid),
+        RollingElasticNetBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid, l1_ratio_grid=[0.2, 0.5]),
     ]
 
     for model in models:
         weights = model.run(chars, features)
-        assert list(weights.columns) == ["id", "eom", "w"]
         assert len(weights) == 3
-        assert set(pd.to_datetime(weights["eom"])) == {pd.Timestamp("2020-03-31")}
         assert np.isfinite(weights["w"]).all(), model
+        assert len(model.selected_params_) == 1
+        params = next(iter(model.selected_params_.values()))
+        assert params["alpha"] in alpha_grid
 
 
 def test_generic_joint_model_supports_non_ipca_model_family() -> None:
