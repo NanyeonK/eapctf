@@ -8,19 +8,21 @@ Current rebuild scope:
 - restore point-prediction benchmark path before any uncertainty claims
 - encode fixed CTF rules separately from participant choices and research choices
 - rebuild uncertainty methods around a joint point+uncertainty interface
-
-Current active module surface:
-- `eapctf.ctf.uncertainty`
+- generalize that interface so multiple model families can use it
 
 Core contract split:
 - fixed CTF contract: inputs, submission schema, test scope, server metric, compliance rules
 - participant choice contract: feature handling, model, tuning, training schedule, signal-to-weight mapping
-- research contract: hold IPCA fixed as benchmark anchor, then test joint point+uncertainty models against it
+- research contract:
+  - IPCA is the first audited rebuild anchor
+  - not the permanent sole model baseline
+  - the permanent architecture target is model-family agnostic joint prediction + uncertainty
 
 Status:
 - bootstrap skeleton with benchmark parity path restored
 - unified point+uncertainty architecture defined
-- next runnable step is first IPCA joint model implementation
+- first IPCA-native uncertainty objects implemented as anchor-stage prototypes
+- next architectural step is generalizing beyond IPCA-specific wrappers
 
 Reference docs:
 - `benchmark_contract.yaml`

@@ -1,4 +1,4 @@
-primary_objective: ipca_leaderboard_parity_then_joint_uncertainty
+primary_objective: model_agnostic_joint_uncertainty_with_ipca_anchor
 
 ctf_fixed_contract:
   inputs:
@@ -44,25 +44,34 @@ participant_choice_contract:
 research_contract:
   benchmark_anchor:
     point_model: ipca
-    rule: hold benchmark path fixed before evaluating uncertainty ideas
+    role: first audited anchor for rebuild parity, not permanent sole baseline
+    rule: evaluate every new model family against the same fixed CTF metric after anchor parity is established
   architecture_rule:
     required_interface:
       - fit(X, y)
       - predict_with_uncertainty(X) -> point, uncertainty
+    design_goal: model_family_pluggable
     rejected_design:
       - detached_post_hoc_qhat_pipeline
+  initial_model_families:
+    - ipca
+    - ols
+    - tree_boosting
+    - neural_network
   first_uncertainty_targets:
     - exposure_instability
     - factor_reconstruction_error
     - rolling_residual_volatility
   evaluation_rule:
     - persist_plain_point_output_and_joint_uncertainty_output_separately
-    - report_benchmark_delta_before_any_research_claim
-    - do_not_claim_value_add_without_beating_fixed_ipca_anchor
+    - report_delta_vs_same_model_point_baseline
+    - report_delta_vs_ipca_anchor
+    - do_not_claim_value_add_without_model_specific_baseline_comparison
 
 benchmark_targets:
-  primary_model: ipca
-  primary_goal: reproduce IPCA portfolio results that are close to the CTF leaderboard before adding any uncertainty layer
+  first_anchor_model: ipca
+  first_goal: reproduce IPCA portfolio results that are close to the CTF leaderboard before adding any uncertainty layer
+  next_goal: extend the same joint interface to additional model families
   acceptance_checks:
     - local_ctf_metric_matches_reference_run
     - local_ipca_result_is_close_to_archived_ipca_weights_result
@@ -77,6 +86,7 @@ sample_contract:
 point_benchmark:
   comparator_set:
     - ipca
+    - future_model_specific_point_baselines
   evaluation_mode: ctf_server_metric
   vol_target: 0.10
   first_deliverable: ipca_benchmark_report
@@ -88,3 +98,4 @@ artifact_requirements:
   persist_metric_summary: true
   persist_point_and_uncertainty_together: true
   persist_contract_boundary_summary: true
+  persist_model_family_name: true

@@ -68,11 +68,17 @@ These are the legitimate strategy degrees of freedom inside the fixed CTF shell.
 ## 3. Our research contract
 This project adds one more layer on top of the participant choice set.
 
-### Benchmark anchor
-The fixed benchmark anchor is IPCA.
+### Benchmark anchor vs architecture target
+IPCA should be treated as the first audited rebuild anchor, not as the permanent sole baseline for the package.
+
+Meaning:
 - First objective: reproduce the validated IPCA benchmark path
-- Second objective: add uncertainty without disturbing benchmark comparability
-- Any uncertainty proposal must be judged against the same fixed IPCA anchor
+- Second objective: use that audited path to lock metric parity and file/contract conventions
+- Third objective: extend the same joint interface to many model families
+
+So there are two different ideas:
+1. `IPCA` as the first anchor for rebuild parity
+2. `model-agnostic joint interface` as the permanent package architecture
 
 ### Architectural rule
 We are not using the old two-stage post-hoc `q_hat` attachment as the active rebuild design.
@@ -83,23 +89,33 @@ Required interface for every fitted research model:
 
 This means point prediction and uncertainty are produced together by one fitted object at prediction time.
 
-### First uncertainty candidates on top of IPCA
-- Exposure instability
-- Factor reconstruction error
-- Rolling residual volatility
+### Model-family rule
+`eapctf` should allow multiple model families through the same contract.
+Initial families should include:
+- IPCA
+- OLS / linear models
+- tree-based ML
+- neural-network models
+
+The package should not hard-code a permanent assumption that only IPCA is valid.
 
 ### Evaluation rule
 For every experiment, persist two outputs separately:
-1. Plain benchmark point output
-2. Joint point+uncertainty output
+1. Plain point baseline for that same model family
+2. Joint point+uncertainty output for that same model family
 
-Then report:
-- benchmark Sharpe
-- uncertainty-aware Sharpe
-- delta vs benchmark
-- exact uncertainty object used
+Then report at least two deltas:
+- delta versus the same model's point-only baseline
+- delta versus the fixed IPCA anchor
 
-No research claim is valid unless the improvement is stated relative to the fixed benchmark path.
+This keeps both comparisons visible:
+- "Does uncertainty help this model?"
+- "Does this model family beat the audited anchor?"
+
+### First uncertainty candidates
+- Exposure instability
+- Factor reconstruction error
+- Rolling residual volatility
 
 ## 4. Operational implication for `eapctf`
 `eapctf` should encode these boundaries explicitly.
@@ -121,12 +137,14 @@ Allow swapping:
 
 ### Research layer
 Require explicit reporting:
+- which model family was used
 - which uncertainty object was used
-- whether it was emitted jointly with point prediction
-- whether it improved or degraded the fixed IPCA benchmark
+- whether uncertainty was emitted jointly with point prediction
+- whether it improved the model-specific point baseline
+- whether it improved or degraded the IPCA anchor
 
 ## 5. Immediate next runnable path
-1. Keep IPCA parity script as the benchmark check
-2. Implement the first unified IPCA model object with `predict_with_uncertainty`
-3. Start with one conservative uncertainty object
-4. Produce benchmark-vs-joint comparison artifacts under the same metric path
+1. Keep IPCA parity script as the anchor check
+2. Generalize the joint interface so non-IPCA families can plug in cleanly
+3. Benchmark each model family first in point-only form
+4. Add joint uncertainty variants and compare against both the model-specific baseline and the IPCA anchor

@@ -4,7 +4,8 @@
 1. Reproduce the archived IPCA benchmark as closely as possible.
 2. Check whether its local CTF metric is close to the live leaderboard range.
 3. Lock the CTF fixed contract before changing any modeling layer.
-4. Only then introduce a unified point+uncertainty model path.
+4. Use IPCA as the first audited anchor, not as the permanent sole architecture.
+5. Move to a model-agnostic joint point+uncertainty interface.
 
 ## Contract boundaries
 The rebuild must keep three layers separate.
@@ -28,10 +29,11 @@ Allowed strategy variation inside the fixed shell:
 
 ### Research contract for this project
 What we are actually testing:
-- IPCA stays fixed as benchmark anchor
+- IPCA is the first audited anchor because parity is already established
+- the package architecture must become model-family agnostic
 - every fitted object must emit point and uncertainty jointly
 - reject the old detached post-hoc `q_hat` pipeline as the active rebuild design
-- every uncertainty experiment must report delta vs the fixed benchmark path
+- every uncertainty experiment must report delta versus the same model's point baseline and versus the IPCA anchor
 
 ## Archived references to reuse
 - Archived repo root:
@@ -49,17 +51,19 @@ What we are actually testing:
 3. Restore metric computation needed to compare local run vs leaderboard
 4. Run archived IPCA benchmark path on current data
 5. Compare local metric vs archived metric vs live leaderboard
-6. Implement first unified IPCA model object with `predict_with_uncertainty`
-7. Run one conservative uncertainty object and report delta vs benchmark
+6. Generalize the joint interface so multiple point-model families can plug in
+7. Keep IPCA as audited anchor while adding model-specific point baselines
+8. Add uncertainty objects model by model and report both deltas
 
 ## Unified uncertainty policy
 - Reject the old post-hoc two-stage `q_hat` pipeline as the active design.
 - Each fitted model must emit point and uncertainty together at predict time.
 - Benchmark output and uncertainty-augmented output remain separate artifacts.
-- First unified target is IPCA, because IPCA parity is already established.
-- Candidate uncertainty objects on top of IPCA:
+- IPCA is first because IPCA parity is already established, not because it is the only allowed baseline.
+- Candidate uncertainty objects on top of IPCA first:
   - exposure instability
   - factor reconstruction error
   - rolling residual volatility
+- After IPCA, expand the same contract to OLS and non-linear ML families.
 - Contract reference:
   `docs/ctf-contract-boundaries.md`
