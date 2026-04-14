@@ -1,6 +1,7 @@
 from eapctf.ctf.leaderboard import LeaderboardEntry, LeaderboardResult, fetch_leaderboard
 from eapctf.ctf.metrics import MetricsResult, compute_metrics
 from eapctf.ctf.uncertainty import (
+    ArchivedIPCAExposureInstabilityModel,
     ArchivedIPCAResidualVolatilityModel,
     IPCAUncertaintyDesign,
     JointUncertaintyModel,
@@ -9,6 +10,7 @@ from eapctf.ctf.uncertainty import (
 )
 
 __all__ = [
+    "ArchivedIPCAExposureInstabilityModel",
     "ArchivedIPCAResidualVolatilityModel",
     "LeaderboardEntry",
     "LeaderboardResult",
