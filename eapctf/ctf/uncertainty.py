@@ -4,6 +4,7 @@ Active rebuild contract:
 - point prediction and uncertainty must be emitted together
 - post-hoc two-stage `q_hat` attachment is rejected as the primary design
 - benchmark path should call one unified model interface
+- permanent architecture target is model-family agnostic
 """
 
 from __future__ import annotations
@@ -49,9 +50,15 @@ class JointUncertaintyModel(ABC):
 
 
 @dataclass
-class _ArchivedIPCAJointModelBase(JointUncertaintyModel):
-    """Shared lookup mechanics for archived-IPCA-based joint uncertainty models."""
+class LookupTableJointModel(JointUncertaintyModel):
+    """Model-family-agnostic joint model built from point and uncertainty lookups.
 
+    This class is the package-level architectural target: any model family can
+    fit whatever point baseline it wants, persist `(id, eom, w)`, and supply a
+    stock-level uncertainty lookup under the same interface.
+    """
+
+    model_family: str
     lookback_months: int = 12
     uncertainty_floor: float = 1e-6
     id_col: str = "id"
@@ -62,7 +69,7 @@ class _ArchivedIPCAJointModelBase(JointUncertaintyModel):
     _point_lookup: pd.DataFrame | None = field(default=None, init=False, repr=False)
     _uncertainty_lookup: pd.DataFrame | None = field(default=None, init=False, repr=False)
 
-    def fit(self, X: object, y: object) -> "_ArchivedIPCAJointModelBase":
+    def fit(self, X: object, y: object) -> "LookupTableJointModel":
         weights = self._coerce_frame(X, required=[self.id_col, self.eom_col, self.w_col], name="weights")
         weights = weights[[self.id_col, self.eom_col, self.w_col]].copy()
         weights[self.eom_col] = pd.to_datetime(weights[self.eom_col])
@@ -110,7 +117,12 @@ class _ArchivedIPCAJointModelBase(JointUncertaintyModel):
         out = request.copy()
         out[self.w_col] = prediction.point
         out["uncertainty"] = prediction.uncertainty
+        out["model_family"] = self.model_family
         return out
+
+    @abstractmethod
+    def _build_uncertainty_lookup(self, weights: pd.DataFrame, y: object) -> pd.DataFrame:
+        """Build `(id, eom, uncertainty)` lookup for fitted point baseline."""
 
     @staticmethod
     def _coerce_frame(obj: object, required: list[str], name: str) -> pd.DataFrame:
@@ -121,13 +133,10 @@ class _ArchivedIPCAJointModelBase(JointUncertaintyModel):
             raise ValueError(f"{name} missing required columns: {missing}")
         return obj
 
-    def _build_uncertainty_lookup(self, weights: pd.DataFrame, y: object) -> pd.DataFrame:
-        raise NotImplementedError
-
 
 @dataclass
-class ArchivedIPCAResidualVolatilityModel(_ArchivedIPCAJointModelBase):
-    """Archived IPCA point weights + trailing stock-level residual-vol proxy."""
+class TrailingResidualVolatilityModel(LookupTableJointModel):
+    """Generic point baseline + trailing stock-level residual-vol proxy."""
 
     def _build_uncertainty_lookup(self, weights: pd.DataFrame, y: object) -> pd.DataFrame:
         daily = self._coerce_frame(y, required=[self.id_col, self.date_col, self.ret_col], name="daily_ret")
@@ -161,20 +170,14 @@ class ArchivedIPCAResidualVolatilityModel(_ArchivedIPCAJointModelBase):
 
 
 @dataclass
-class ArchivedIPCAExposureInstabilityModel(_ArchivedIPCAJointModelBase):
-    """Archived IPCA point weights + trailing instability of past IPCA weights.
-
-    This is more IPCA-native than residual volatility because the uncertainty
-    object is computed directly from the benchmark path's own historical weight
-    evolution for each stock. It measures how unstable the stock's implied IPCA
-    exposure/portfolio assignment has been across prior rebalance dates.
-    """
+class HistoricalWeightInstabilityModel(LookupTableJointModel):
+    """Generic point baseline + trailing instability of past point weights."""
 
     min_history: int = 2
 
     def _build_uncertainty_lookup(self, weights: pd.DataFrame, y: object) -> pd.DataFrame:
         if y is not None:
-            _ = y  # explicit ignore; interface stays joint even when this proxy uses weights only
+            _ = y
 
         rows: list[dict[str, object]] = []
         for stock_id, group in weights.groupby(self.id_col, sort=False):
@@ -200,9 +203,23 @@ class ArchivedIPCAExposureInstabilityModel(_ArchivedIPCAJointModelBase):
         return pd.DataFrame(rows)
 
 
+@dataclass
+class ArchivedIPCAResidualVolatilityModel(TrailingResidualVolatilityModel):
+    """IPCA anchor adapter for trailing residual volatility."""
+
+    model_family: str = "ipca"
+
+
+@dataclass
+class ArchivedIPCAExposureInstabilityModel(HistoricalWeightInstabilityModel):
+    """IPCA anchor adapter for historical point-weight instability."""
+
+    model_family: str = "ipca"
+
+
 @dataclass(frozen=True)
 class IPCAUncertaintyDesign:
-    """Design placeholder for the first unified benchmark path."""
+    """Design placeholder for first audited rebuild anchor."""
 
     benchmark_anchor: str = "ipca"
     uncertainty_family_candidates: tuple[str, ...] = (
@@ -210,3 +227,4 @@ class IPCAUncertaintyDesign:
         "factor_reconstruction_error",
         "rolling_residual_volatility",
     )
+    architecture_target: str = "model_family_agnostic_joint_interface"
