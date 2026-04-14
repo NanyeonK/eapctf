@@ -22,3 +22,12 @@
 4. Run archived IPCA benchmark path on current data
 5. Compare local metric vs archived metric vs live leaderboard
 6. Add minimal uncertainty hook only after parity is acceptable
+
+## Minimal uncertainty overlay policy
+- Overlay must rescale validated benchmark weights, not replace the benchmark portfolio construction path.
+- Keep benchmark output and overlay output as separate artifacts.
+- Default overlay strength should be zero until explicitly enabled.
+- First overlay methods allowed:
+  - inverse interval scaling
+  - inverse sqrt interval scaling
+  - exponential shrinkage by z-scored uncertainty
