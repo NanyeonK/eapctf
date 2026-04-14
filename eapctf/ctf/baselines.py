@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import product
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import ElasticNet, Lasso, Ridge
+from sklearn.linear_model import ElasticNet, ElasticNetCV, Lasso, LassoCV, Ridge, RidgeCV
 from sklearn.model_selection import KFold
 
 
@@ -120,8 +119,6 @@ class RollingLinearBaseline:
 
 @dataclass
 class RollingOLSBaseline(RollingLinearBaseline):
-    """Minimal rolling/expanding OLS point baseline for CTF-style panels."""
-
     model_family: str = "ols"
 
     def fit_estimator(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray):
@@ -138,33 +135,23 @@ class _RegularizedLinearBaseline(RollingLinearBaseline):
 
     def fit_estimator(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray):
         if self.cv_folds and self.cv_folds >= 2 and self.alpha_grid:
-            params = self._select_params_via_cv(x_train, y_train, train_eoms)
-        else:
-            params = self.default_params()
+            model, params = self.fit_cv_estimator(x_train, y_train, train_eoms)
+            return model, params
+        params = self.default_params()
         model = self.build_model(**params)
         model.fit(x_train, y_train)
         return model, {k: float(v) for k, v in params.items()}
 
-    def _select_params_via_cv(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray) -> dict[str, float]:
+    def fit_cv_estimator(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray):
         splits = self._cv_split_indices(x_train, y_train, train_eoms)
         if not splits:
-            return self.default_params()
-
-        best_params = None
-        best_score = float("inf")
-        for params in self.param_grid():
-            fold_scores: list[float] = []
-            for train_idx, val_idx in splits:
-                model = self.build_model(**params)
-                model.fit(x_train[train_idx], y_train[train_idx])
-                pred = np.asarray(model.predict(x_train[val_idx]), dtype=float)
-                mse = float(np.mean((y_train[val_idx] - pred) ** 2))
-                fold_scores.append(mse)
-            score = float(np.mean(fold_scores))
-            if score < best_score:
-                best_score = score
-                best_params = params
-        return best_params or self.default_params()
+            params = self.default_params()
+            model = self.build_model(**params)
+            model.fit(x_train, y_train)
+            return model, {k: float(v) for k, v in params.items()}
+        cv_model = self.build_cv_model(splits)
+        cv_model.fit(x_train, y_train)
+        return cv_model, self.extract_cv_params(cv_model)
 
     def _cv_split_indices(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray):
         train_eoms = pd.to_datetime(train_eoms).to_numpy(dtype="datetime64[ns]")
@@ -206,11 +193,13 @@ class _RegularizedLinearBaseline(RollingLinearBaseline):
         alpha = self.alpha_grid[0] if self.alpha_grid else self.alpha
         return {"alpha": alpha}
 
-    def param_grid(self) -> list[dict[str, float]]:
-        assert self.alpha_grid is not None
-        return [{"alpha": alpha} for alpha in self.alpha_grid]
-
     def build_model(self, **params):
+        raise NotImplementedError
+
+    def build_cv_model(self, splits):
+        raise NotImplementedError
+
+    def extract_cv_params(self, model) -> dict[str, float]:
         raise NotImplementedError
 
 
@@ -222,6 +211,13 @@ class RollingRidgeBaseline(_RegularizedLinearBaseline):
     def build_model(self, **params):
         return Ridge(alpha=params["alpha"], fit_intercept=False, random_state=None)
 
+    def build_cv_model(self, splits):
+        alphas = self.alpha_grid or [self.alpha]
+        return RidgeCV(alphas=alphas, fit_intercept=False, cv=splits, scoring="neg_mean_squared_error")
+
+    def extract_cv_params(self, model) -> dict[str, float]:
+        return {"alpha": float(model.alpha_)}
+
 
 @dataclass
 class RollingLassoBaseline(_RegularizedLinearBaseline):
@@ -231,6 +227,13 @@ class RollingLassoBaseline(_RegularizedLinearBaseline):
 
     def build_model(self, **params):
         return Lasso(alpha=params["alpha"], fit_intercept=False, max_iter=self.max_iter, random_state=42)
+
+    def build_cv_model(self, splits):
+        alphas = self.alpha_grid or [self.alpha]
+        return LassoCV(alphas=alphas, fit_intercept=False, max_iter=self.max_iter, random_state=42, cv=splits, n_jobs=-1)
+
+    def extract_cv_params(self, model) -> dict[str, float]:
+        return {"alpha": float(model.alpha_)}
 
 
 @dataclass
@@ -246,14 +249,6 @@ class RollingElasticNetBaseline(_RegularizedLinearBaseline):
         l1_ratio = self.l1_ratio_grid[0] if self.l1_ratio_grid else self.l1_ratio
         return {"alpha": alpha, "l1_ratio": l1_ratio}
 
-    def param_grid(self) -> list[dict[str, float]]:
-        alpha_grid = self.alpha_grid or [self.alpha]
-        l1_grid = self.l1_ratio_grid or [self.l1_ratio]
-        return [
-            {"alpha": alpha, "l1_ratio": l1_ratio}
-            for alpha, l1_ratio in product(alpha_grid, l1_grid)
-        ]
-
     def build_model(self, **params):
         return ElasticNet(
             alpha=params["alpha"],
@@ -262,3 +257,19 @@ class RollingElasticNetBaseline(_RegularizedLinearBaseline):
             max_iter=self.max_iter,
             random_state=42,
         )
+
+    def build_cv_model(self, splits):
+        alphas = self.alpha_grid or [self.alpha]
+        l1_grid = self.l1_ratio_grid or [self.l1_ratio]
+        return ElasticNetCV(
+            alphas=alphas,
+            l1_ratio=l1_grid,
+            fit_intercept=False,
+            max_iter=self.max_iter,
+            random_state=42,
+            cv=splits,
+            n_jobs=-1,
+        )
+
+    def extract_cv_params(self, model) -> dict[str, float]:
+        return {"alpha": float(model.alpha_), "l1_ratio": float(model.l1_ratio_)}
