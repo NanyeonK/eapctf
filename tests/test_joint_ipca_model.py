@@ -103,6 +103,58 @@ def test_expanding_ols_baseline_uses_all_available_history() -> None:
     assert model.last_train_row_count_ == 6
 
 
+def test_forward_month_block_cv_never_trains_on_future_months() -> None:
+    from eapctf.ctf.baselines import RollingRidgeBaseline
+
+    chars = pd.DataFrame(
+        {
+            "id": [1, 2] * 6,
+            "eom": [
+                "2020-01-31", "2020-01-31",
+                "2020-02-29", "2020-02-29",
+                "2020-03-31", "2020-03-31",
+                "2020-04-30", "2020-04-30",
+                "2020-05-31", "2020-05-31",
+                "2020-06-30", "2020-06-30",
+            ],
+            "eom_ret": [
+                "2020-01-31", "2020-01-31",
+                "2020-02-29", "2020-02-29",
+                "2020-03-31", "2020-03-31",
+                "2020-04-30", "2020-04-30",
+                "2020-05-31", "2020-05-31",
+                "2020-06-30", "2020-06-30",
+            ],
+            "ret_exc_lead1m": [0.01, -0.01, 0.02, -0.02, 0.03, -0.03, 0.04, -0.04, 0.05, -0.05, 0.06, -0.06],
+            "ctff_test": [False] * 10 + [True, True],
+            "f1": [1.0, -1.0, 1.1, -1.1, 1.2, -1.2, 1.3, -1.3, 1.4, -1.4, 1.5, -1.5],
+            "f2": [0.3, -0.3, 0.4, -0.4, 0.5, -0.5, 0.6, -0.6, 0.7, -0.7, 0.8, -0.8],
+        }
+    )
+    features = ["f1", "f2"]
+    model = RollingRidgeBaseline(
+        train_scheme="expanding",
+        window_length=5,
+        min_train_rows=8,
+        rank_transform=False,
+        cv_folds=5,
+        cv_scheme="forward_month_block",
+        alpha_grid=[0.0001, 0.01],
+    )
+    train = model._slice_training_window(chars, pd.Timestamp("2020-06-30"), features)
+    x_train = train[features].to_numpy(dtype=float)
+    y_train = train["ret_exc_lead1m"].to_numpy(dtype=float)
+    eoms = pd.to_datetime(train["eom"]).to_numpy()
+
+    splits = model._cv_split_indices(x_train, y_train, eoms)
+
+    assert len(splits) >= 2
+    for train_idx, val_idx in splits:
+        assert len(train_idx) > 0
+        assert len(val_idx) > 0
+        assert pd.Timestamp(eoms[train_idx].max()) < pd.Timestamp(eoms[val_idx].min())
+
+
 def test_regularized_linear_baselines_support_5fold_cv() -> None:
     from eapctf.ctf.baselines import (
         RollingElasticNetBaseline,
@@ -135,9 +187,9 @@ def test_regularized_linear_baselines_support_5fold_cv() -> None:
     alpha_grid = [0.0001, 0.01, 0.1]
 
     models = [
-        RollingRidgeBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid),
-        RollingLassoBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid),
-        RollingElasticNetBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid, l1_ratio_grid=[0.2, 0.5]),
+        RollingRidgeBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid, cv_scheme="forward_month_block"),
+        RollingLassoBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid, cv_scheme="forward_month_block"),
+        RollingElasticNetBaseline(window_length=3, min_train_rows=9, rank_transform=False, cv_folds=5, alpha_grid=alpha_grid, l1_ratio_grid=[0.2, 0.5], cv_scheme="forward_month_block"),
     ]
 
     for model in models:
