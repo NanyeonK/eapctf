@@ -7,6 +7,31 @@ import pytest
 from eapctf.ctf.uncertainty import PredictionWithUncertainty
 
 
+def _tiny_panel() -> tuple[pd.DataFrame, list[str]]:
+    chars = pd.DataFrame(
+        {
+            "id": [1, 2, 3] * 4,
+            "eom": [
+                "2020-01-31", "2020-01-31", "2020-01-31",
+                "2020-02-29", "2020-02-29", "2020-02-29",
+                "2020-03-31", "2020-03-31", "2020-03-31",
+                "2020-04-30", "2020-04-30", "2020-04-30",
+            ],
+            "eom_ret": [
+                "2020-01-31", "2020-01-31", "2020-01-31",
+                "2020-02-29", "2020-02-29", "2020-02-29",
+                "2020-03-31", "2020-03-31", "2020-03-31",
+                "2020-04-30", "2020-04-30", "2020-04-30",
+            ],
+            "ret_exc_lead1m": [0.03, 0.00, -0.03, 0.04, 0.00, -0.04, 0.05, 0.00, -0.05, 0.06, 0.00, -0.06],
+            "ctff_test": [False, False, False, False, False, False, False, False, False, True, True, True],
+            "f1": [1.0, 0.0, -1.0, 1.1, 0.0, -1.1, 1.2, 0.0, -1.2, 1.3, 0.0, -1.3],
+            "f2": [0.6, 0.0, -0.6, 0.7, 0.0, -0.7, 0.8, 0.0, -0.8, 0.9, 0.0, -0.9],
+        }
+    )
+    return chars, ["f1", "f2"]
+
+
 def test_prediction_with_uncertainty_rejects_shape_mismatch() -> None:
     with pytest.raises(ValueError, match="share shape"):
         PredictionWithUncertainty(
@@ -20,6 +45,44 @@ def test_lookup_table_joint_model_is_abstract() -> None:
 
     with pytest.raises(TypeError):
         LookupTableJointModel(model_family="ols")
+
+
+def test_model_registry_includes_requested_ml_families() -> None:
+    from eapctf.ctf.model_registry import available_model_families
+
+    names = set(available_model_families())
+    assert {"rf", "lgbm", "xgb", "nn", "ols", "ridge", "lasso", "elastic_net"}.issubset(names)
+
+
+def test_requested_ml_baselines_produce_test_period_weights() -> None:
+    from eapctf.ctf.baselines import (
+        RollingLightGBMBaseline,
+        RollingMLPBaseline,
+        RollingRandomForestBaseline,
+        RollingXGBoostBaseline,
+    )
+
+    chars, features = _tiny_panel()
+    models = [
+        RollingRandomForestBaseline(window_length=3, min_train_rows=9, rank_transform=False, n_estimators=10, max_depth=3),
+        RollingLightGBMBaseline(window_length=3, min_train_rows=9, rank_transform=False, n_estimators=20, learning_rate=0.1, num_leaves=7),
+        RollingXGBoostBaseline(window_length=3, min_train_rows=9, rank_transform=False, n_estimators=20, max_depth=3, learning_rate=0.1),
+        RollingMLPBaseline(window_length=3, min_train_rows=9, rank_transform=False, hidden_layer_sizes=(8,), max_iter=50),
+    ]
+    for model in models:
+        weights = model.run(chars, features)
+        assert len(weights) == 3, model
+        assert list(weights.columns) == ["id", "eom", "w"]
+        assert np.isfinite(weights["w"]).all(), model
+
+
+def test_custom_model_can_be_registered() -> None:
+    from eapctf.ctf.model_registry import build_point_baseline, register_model
+    from eapctf.ctf.baselines import RollingOLSBaseline
+
+    register_model("custom-ols-test", RollingOLSBaseline)
+    model = build_point_baseline("custom-ols-test", window_length=3, rank_transform=False)
+    assert isinstance(model, RollingOLSBaseline)
 
 
 def test_rolling_ols_baseline_produces_test_period_weights() -> None:

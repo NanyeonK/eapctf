@@ -4,13 +4,17 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+from lightgbm import LGBMRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import ElasticNet, ElasticNetCV, Lasso, LassoCV, Ridge, RidgeCV
 from sklearn.model_selection import KFold
+from sklearn.neural_network import MLPRegressor
+from xgboost import XGBRegressor
 
 
 @dataclass
 class RollingLinearBaseline:
-    """Shared rolling/expanding linear-model baseline for CTF-style panels."""
+    """Shared rolling/expanding point-model baseline for CTF-style panels."""
 
     model_family: str
     window_length: int = 120
@@ -273,3 +277,117 @@ class RollingElasticNetBaseline(_RegularizedLinearBaseline):
 
     def extract_cv_params(self, model) -> dict[str, float]:
         return {"alpha": float(model.alpha_), "l1_ratio": float(model.l1_ratio_)}
+
+
+@dataclass
+class RollingRandomForestBaseline(RollingLinearBaseline):
+    model_family: str = "rf"
+    n_estimators: int = 200
+    max_depth: int | None = None
+    max_features: str | float | int = "sqrt"
+    min_samples_leaf: int = 1
+    n_jobs: int = -1
+    random_state: int = 42
+
+    def fit_estimator(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray):
+        model = RandomForestRegressor(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            max_features=self.max_features,
+            min_samples_leaf=self.min_samples_leaf,
+            n_jobs=self.n_jobs,
+            random_state=self.random_state,
+        )
+        model.fit(x_train, y_train)
+        return model, {
+            "n_estimators": float(self.n_estimators),
+            "max_depth": float(self.max_depth) if self.max_depth is not None else -1.0,
+        }
+
+
+@dataclass
+class RollingLightGBMBaseline(RollingLinearBaseline):
+    model_family: str = "lgbm"
+    n_estimators: int = 300
+    learning_rate: float = 0.05
+    num_leaves: int = 31
+    subsample: float = 0.8
+    colsample_bytree: float = 0.8
+    n_jobs: int = -1
+    random_state: int = 42
+
+    def fit_estimator(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray):
+        model = LGBMRegressor(
+            n_estimators=self.n_estimators,
+            learning_rate=self.learning_rate,
+            num_leaves=self.num_leaves,
+            subsample=self.subsample,
+            colsample_bytree=self.colsample_bytree,
+            n_jobs=self.n_jobs,
+            random_state=self.random_state,
+            verbose=-1,
+        )
+        model.fit(x_train, y_train)
+        return model, {
+            "n_estimators": float(self.n_estimators),
+            "learning_rate": float(self.learning_rate),
+            "num_leaves": float(self.num_leaves),
+        }
+
+
+@dataclass
+class RollingXGBoostBaseline(RollingLinearBaseline):
+    model_family: str = "xgb"
+    n_estimators: int = 300
+    max_depth: int = 6
+    learning_rate: float = 0.05
+    subsample: float = 0.8
+    colsample_bytree: float = 0.8
+    n_jobs: int = -1
+    random_state: int = 42
+
+    def fit_estimator(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray):
+        model = XGBRegressor(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            subsample=self.subsample,
+            colsample_bytree=self.colsample_bytree,
+            n_jobs=self.n_jobs,
+            random_state=self.random_state,
+            objective="reg:squarederror",
+            tree_method="hist",
+            verbosity=0,
+        )
+        model.fit(x_train, y_train)
+        return model, {
+            "n_estimators": float(self.n_estimators),
+            "max_depth": float(self.max_depth),
+            "learning_rate": float(self.learning_rate),
+        }
+
+
+@dataclass
+class RollingMLPBaseline(RollingLinearBaseline):
+    model_family: str = "nn"
+    hidden_layer_sizes: tuple[int, ...] = (64, 32)
+    alpha: float = 0.0001
+    learning_rate_init: float = 0.001
+    max_iter: int = 200
+    random_state: int = 42
+
+    def fit_estimator(self, x_train: np.ndarray, y_train: np.ndarray, train_eoms: np.ndarray):
+        model = MLPRegressor(
+            hidden_layer_sizes=self.hidden_layer_sizes,
+            alpha=self.alpha,
+            learning_rate_init=self.learning_rate_init,
+            max_iter=self.max_iter,
+            random_state=self.random_state,
+            early_stopping=False,
+        )
+        model.fit(x_train, y_train)
+        return model, {
+            "alpha": float(self.alpha),
+            "learning_rate_init": float(self.learning_rate_init),
+            "hidden_layers": float(len(self.hidden_layer_sizes)),
+        }
