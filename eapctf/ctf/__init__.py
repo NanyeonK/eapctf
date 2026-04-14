@@ -1,4 +1,9 @@
-from eapctf.ctf.baselines import RollingOLSBaseline
+from eapctf.ctf.baselines import (
+    RollingElasticNetBaseline,
+    RollingLassoBaseline,
+    RollingOLSBaseline,
+    RollingRidgeBaseline,
+)
 from eapctf.ctf.leaderboard import LeaderboardEntry, LeaderboardResult, fetch_leaderboard
 from eapctf.ctf.metrics import MetricsResult, compute_metrics
 from eapctf.ctf.uncertainty import (
@@ -24,7 +29,10 @@ __all__ = [
     "IPCAUncertaintyDesign",
     "JointUncertaintyModel",
     "PredictionWithUncertainty",
+    "RollingElasticNetBaseline",
+    "RollingLassoBaseline",
     "RollingOLSBaseline",
+    "RollingRidgeBaseline",
     "TrailingResidualVolatilityModel",
     "UncertaintyConfig",
     "compute_metrics",

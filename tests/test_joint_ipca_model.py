@@ -62,6 +62,48 @@ def test_rolling_ols_baseline_produces_test_period_weights() -> None:
     assert np.isfinite(weights["w"]).all()
 
 
+def test_regularized_linear_baselines_produce_test_period_weights() -> None:
+    from eapctf.ctf.baselines import (
+        RollingElasticNetBaseline,
+        RollingLassoBaseline,
+        RollingRidgeBaseline,
+    )
+
+    chars = pd.DataFrame(
+        {
+            "id": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+            "eom": [
+                "2020-01-31", "2020-01-31", "2020-01-31",
+                "2020-02-29", "2020-02-29", "2020-02-29",
+                "2020-03-31", "2020-03-31", "2020-03-31",
+            ],
+            "eom_ret": [
+                "2020-01-31", "2020-01-31", "2020-01-31",
+                "2020-02-29", "2020-02-29", "2020-02-29",
+                "2020-03-31", "2020-03-31", "2020-03-31",
+            ],
+            "ret_exc_lead1m": [0.03, 0.00, -0.03, 0.04, 0.00, -0.04, 0.05, 0.00, -0.05],
+            "ctff_test": [False, False, False, False, False, False, True, True, True],
+            "f1": [1.0, 0.0, -1.0, 1.1, 0.0, -1.1, 1.2, 0.0, -1.2],
+            "f2": [0.6, 0.0, -0.6, 0.7, 0.0, -0.7, 0.8, 0.0, -0.8],
+        }
+    )
+    features = ["f1", "f2"]
+
+    models = [
+        RollingRidgeBaseline(window_length=2, min_train_rows=4, rank_transform=False, alpha=0.1),
+        RollingLassoBaseline(window_length=2, min_train_rows=4, rank_transform=False, alpha=0.001),
+        RollingElasticNetBaseline(window_length=2, min_train_rows=4, rank_transform=False, alpha=0.001, l1_ratio=0.5),
+    ]
+
+    for model in models:
+        weights = model.run(chars, features)
+        assert list(weights.columns) == ["id", "eom", "w"]
+        assert len(weights) == 3
+        assert set(pd.to_datetime(weights["eom"])) == {pd.Timestamp("2020-03-31")}
+        assert np.isfinite(weights["w"]).all(), model
+
+
 def test_generic_joint_model_supports_non_ipca_model_family() -> None:
     from eapctf.ctf.uncertainty import HistoricalWeightInstabilityModel
 
