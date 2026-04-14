@@ -1,4 +1,4 @@
-primary_objective: ipca_leaderboard_parity_then_uncertainty
+primary_objective: ipca_leaderboard_parity_then_joint_uncertainty
 
 benchmark_targets:
   primary_model: ipca
@@ -21,15 +21,21 @@ point_benchmark:
   vol_target: 0.10
   first_deliverable: ipca_benchmark_report
 
-uncertainty_extension:
-  rule: add only after ipca benchmark parity is established
-  allowed_scope: slight uncertainty overlay on top of validated IPCA path
-  disallowed_scope:
-    - full uncertainty system redesign before IPCA parity
-    - model proliferation before benchmark parity
+uncertainty_architecture:
+  required_interface:
+    - fit(X, y)
+    - predict_with_uncertainty(X) -> point, uncertainty
+  rejected_design:
+    - detached_post_hoc_qhat_pipeline
+  first_target_model: ipca
+  candidate_uncertainty_objects:
+    - exposure_instability
+    - factor_reconstruction_error
+    - rolling_residual_volatility
 
 artifact_requirements:
   persist_weights: true
   persist_train_window_metadata: true
   persist_feature_subset: true
   persist_metric_summary: true
+  persist_point_and_uncertainty_together: true

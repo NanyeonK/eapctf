@@ -3,7 +3,7 @@
 ## Immediate objective
 1. Reproduce the archived IPCA benchmark as closely as possible.
 2. Check whether its local CTF metric is close to the live leaderboard range.
-3. Only then add a light uncertainty overlay.
+3. Only then introduce a unified point+uncertainty model path.
 
 ## Archived references to reuse
 - Archived repo root:
@@ -21,13 +21,14 @@
 3. Restore metric computation needed to compare local run vs leaderboard
 4. Run archived IPCA benchmark path on current data
 5. Compare local metric vs archived metric vs live leaderboard
-6. Add minimal uncertainty hook only after parity is acceptable
+6. Build a unified point+uncertainty interface for IPCA first
 
-## Minimal uncertainty overlay policy
-- Overlay must rescale validated benchmark weights, not replace the benchmark portfolio construction path.
-- Keep benchmark output and overlay output as separate artifacts.
-- Default overlay strength should be zero until explicitly enabled.
-- First overlay methods allowed:
-  - inverse interval scaling
-  - inverse sqrt interval scaling
-  - exponential shrinkage by z-scored uncertainty
+## Unified uncertainty policy
+- Reject the old post-hoc two-stage `q_hat` pipeline as the active design.
+- Each fitted model must emit point and uncertainty together at predict time.
+- Benchmark output and uncertainty-augmented output remain separate artifacts.
+- First unified target is IPCA, because IPCA parity is already established.
+- Candidate uncertainty objects on top of IPCA:
+  - exposure instability
+  - factor reconstruction error
+  - rolling residual volatility
