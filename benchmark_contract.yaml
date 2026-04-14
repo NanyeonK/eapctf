@@ -1,0 +1,35 @@
+primary_objective: ipca_leaderboard_parity_then_uncertainty
+
+benchmark_targets:
+  primary_model: ipca
+  primary_goal: reproduce IPCA portfolio results that are close to the CTF leaderboard before adding any uncertainty layer
+  acceptance_checks:
+    - local_ctf_metric_matches_reference_run
+    - local_ipca_result_is_close_to_archived_ipca_weights_result
+    - leaderboard_gap_is_reported_explicitly
+
+sample_contract:
+  data_source_chars: ctff_chars.parquet
+  data_source_features: ctff_features.parquet
+  test_dates_source: ctff_test
+  feature_subset: all
+
+point_benchmark:
+  comparator_set:
+    - ipca
+  evaluation_mode: ctf_server_metric
+  vol_target: 0.10
+  first_deliverable: ipca_benchmark_report
+
+uncertainty_extension:
+  rule: add only after ipca benchmark parity is established
+  allowed_scope: slight uncertainty overlay on top of validated IPCA path
+  disallowed_scope:
+    - full uncertainty system redesign before IPCA parity
+    - model proliferation before benchmark parity
+
+artifact_requirements:
+  persist_weights: true
+  persist_train_window_metadata: true
+  persist_feature_subset: true
+  persist_metric_summary: true
