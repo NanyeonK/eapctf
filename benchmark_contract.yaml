@@ -1,5 +1,65 @@
 primary_objective: ipca_leaderboard_parity_then_joint_uncertainty
 
+ctf_fixed_contract:
+  inputs:
+    chars: ctff_chars.parquet
+    features: ctff_features.parquet
+    daily_ret: ctff_daily_ret.parquet
+  submission_interface:
+    function: main(chars, features, daily_ret) -> DataFrame
+    required_columns:
+      - id
+      - eom
+      - w
+  test_scope:
+    test_flag_source: ctff_test
+    requirement: every flagged test month must be covered
+  server_evaluation:
+    metric: vol_targeted_sharpe
+    vol_target: 0.10
+    return_aggregation: next_month_from_daily_ret
+  compliance_rules:
+    - no_lookahead_bias
+    - deterministic_submission
+    - no_nan_weights
+    - unique_id_eom_pairs
+    - no_external_network_calls
+
+participant_choice_contract:
+  allowed_degrees_of_freedom:
+    - feature_subset_selection
+    - feature_transformation_and_normalization
+    - model_class
+    - hyperparameter_tuning
+    - train_window_design
+    - refit_schedule
+    - signal_to_weight_mapping
+    - use_of_uncertainty_inside_weight_construction
+  forbidden_changes:
+    - changing_server_metric
+    - changing_test_dates
+    - changing_submission_columns
+    - using_future_information
+
+research_contract:
+  benchmark_anchor:
+    point_model: ipca
+    rule: hold benchmark path fixed before evaluating uncertainty ideas
+  architecture_rule:
+    required_interface:
+      - fit(X, y)
+      - predict_with_uncertainty(X) -> point, uncertainty
+    rejected_design:
+      - detached_post_hoc_qhat_pipeline
+  first_uncertainty_targets:
+    - exposure_instability
+    - factor_reconstruction_error
+    - rolling_residual_volatility
+  evaluation_rule:
+    - persist_plain_point_output_and_joint_uncertainty_output_separately
+    - report_benchmark_delta_before_any_research_claim
+    - do_not_claim_value_add_without_beating_fixed_ipca_anchor
+
 benchmark_targets:
   primary_model: ipca
   primary_goal: reproduce IPCA portfolio results that are close to the CTF leaderboard before adding any uncertainty layer
@@ -21,21 +81,10 @@ point_benchmark:
   vol_target: 0.10
   first_deliverable: ipca_benchmark_report
 
-uncertainty_architecture:
-  required_interface:
-    - fit(X, y)
-    - predict_with_uncertainty(X) -> point, uncertainty
-  rejected_design:
-    - detached_post_hoc_qhat_pipeline
-  first_target_model: ipca
-  candidate_uncertainty_objects:
-    - exposure_instability
-    - factor_reconstruction_error
-    - rolling_residual_volatility
-
 artifact_requirements:
   persist_weights: true
   persist_train_window_metadata: true
   persist_feature_subset: true
   persist_metric_summary: true
   persist_point_and_uncertainty_together: true
+  persist_contract_boundary_summary: true
