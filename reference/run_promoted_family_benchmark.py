@@ -13,8 +13,8 @@ DATA_ROOT = Path.home() / "eap" / "data" / "ctf"
 ARCHIVE_ROOT = Path.home() / "project_archive" / "eapctf_local_reset_20260414_165453" / "eapctf_before_rebuild"
 IPCA_WEIGHTS = ARCHIVE_ROOT / "data" / "ctf" / "ipca_weights.parquet"
 LOG_PATH = Path(os.environ.get("EAPCTF_PROMOTED_LOG", "/tmp/promoted_family_benchmark.log"))
-MAX_FEATURES = int(os.environ.get("EAPCTF_MAX_FEATURES", "50"))
-MAX_TEST_MONTHS = int(os.environ.get("EAPCTF_MAX_TEST_MONTHS", "60"))
+MAX_FEATURES_ENV = os.environ.get("EAPCTF_MAX_FEATURES")
+MAX_TEST_MONTHS_ENV = os.environ.get("EAPCTF_MAX_TEST_MONTHS")
 FAMILIES = os.environ.get("EAPCTF_FAMILIES", "xgb,lasso,lgbm,nn").split(",")
 
 
@@ -54,9 +54,14 @@ def main() -> None:
     daily = pd.read_parquet(DATA_ROOT / "ctff_daily_ret.parquet")
     ipca = pd.read_parquet(IPCA_WEIGHTS)
 
-    feature_list = features["features"].tolist()[:MAX_FEATURES]
+    feature_names = features["features"].tolist()
+    max_features = int(MAX_FEATURES_ENV) if MAX_FEATURES_ENV else len(feature_names)
+    feature_list = feature_names[:max_features]
+
     test_months = sorted(pd.to_datetime(chars.loc[chars["ctff_test"], "eom_ret"]).unique())
-    selected_test_months = test_months[-MAX_TEST_MONTHS:]
+    max_test_months = int(MAX_TEST_MONTHS_ENV) if MAX_TEST_MONTHS_ENV else len(test_months)
+    selected_test_months = test_months[-max_test_months:]
+
     chars = chars[chars["eom_ret"].isin(selected_test_months) | (pd.to_datetime(chars["eom_ret"]) < selected_test_months[0])].copy()
     ipca = ipca[pd.to_datetime(ipca["eom"]).isin(selected_test_months)].copy()
     ipca_metrics = compute_metrics(ipca[["id", "eom", "w"]], daily)
@@ -64,8 +69,9 @@ def main() -> None:
     emit({
         "stage": "start",
         "families": families,
-        "max_features": MAX_FEATURES,
-        "max_test_months": MAX_TEST_MONTHS,
+        "max_features": len(feature_list),
+        "max_test_months": len(selected_test_months),
+        "config_mode": "benchmark_default" if (MAX_FEATURES_ENV is None and MAX_TEST_MONTHS_ENV is None) else "override",
         "ipca_anchor_sharpe": float(ipca_metrics.sharpe),
     })
 
@@ -81,7 +87,7 @@ def main() -> None:
                 "name": name,
                 "status": "ok",
                 "feature_count": len(feature_list),
-                "test_months": MAX_TEST_MONTHS,
+                "test_months": len(selected_test_months),
                 "n_rows": int(len(weights)),
                 "sharpe": float(metrics.sharpe),
                 "annual_return": float(metrics.annual_return),
