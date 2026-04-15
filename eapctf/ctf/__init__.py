@@ -12,24 +12,26 @@ from eapctf.ctf.leaderboard import LeaderboardEntry, LeaderboardResult, fetch_le
 from eapctf.ctf.metrics import MetricsResult, compute_metrics
 from eapctf.ctf.model_registry import available_model_families, build_point_baseline, register_model
 from eapctf.ctf.uncertainty import (
-    ArchivedIPCAExposureInstabilityModel,
-    ArchivedIPCAResidualVolatilityModel,
+    ArchivedIPCATotalVolatilityModel,
+    ArchivedIPCAWeightInstabilityModel,
     HistoricalWeightInstabilityModel,
     IPCAUncertaintyDesign,
     JointUncertaintyModel,
-    LookupTableJointModel,
+    LookupTableUncertaintyAdapter,
     PredictionWithUncertainty,
     TrailingResidualVolatilityModel,
+    TrailingTotalVolatilityModel,
     UncertaintyConfig,
+    UncertaintyOverlayAdapter,
 )
 
 __all__ = [
-    "ArchivedIPCAExposureInstabilityModel",
-    "ArchivedIPCAResidualVolatilityModel",
+    "ArchivedIPCATotalVolatilityModel",
+    "ArchivedIPCAWeightInstabilityModel",
     "HistoricalWeightInstabilityModel",
     "LeaderboardEntry",
     "LeaderboardResult",
-    "LookupTableJointModel",
+    "LookupTableUncertaintyAdapter",
     "MetricsResult",
     "IPCAUncertaintyDesign",
     "JointUncertaintyModel",
@@ -43,7 +45,9 @@ __all__ = [
     "RollingRidgeBaseline",
     "RollingXGBoostBaseline",
     "TrailingResidualVolatilityModel",
+    "TrailingTotalVolatilityModel",
     "UncertaintyConfig",
+    "UncertaintyOverlayAdapter",
     "available_model_families",
     "build_point_baseline",
     "register_model",

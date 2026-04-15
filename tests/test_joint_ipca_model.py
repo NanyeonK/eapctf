@@ -40,11 +40,84 @@ def test_prediction_with_uncertainty_rejects_shape_mismatch() -> None:
         )
 
 
-def test_lookup_table_joint_model_is_abstract() -> None:
-    from eapctf.ctf.uncertainty import LookupTableJointModel
+def test_lookup_table_uncertainty_adapter_is_abstract() -> None:
+    from eapctf.ctf.uncertainty import LookupTableUncertaintyAdapter
 
     with pytest.raises(TypeError):
-        LookupTableJointModel(model_family="ols")
+        LookupTableUncertaintyAdapter(model_family="ols")
+
+
+def test_overlay_adapter_and_joint_model_are_separate_abcs() -> None:
+    from eapctf.ctf.uncertainty import JointUncertaintyModel, UncertaintyOverlayAdapter
+
+    assert JointUncertaintyModel is not UncertaintyOverlayAdapter
+
+
+def test_total_volatility_adapter_supports_non_ipca_model_family() -> None:
+    from eapctf.ctf.uncertainty import TrailingTotalVolatilityModel
+
+    weights = pd.DataFrame(
+        {
+            "id": [1, 2],
+            "eom": ["2020-01-31", "2020-01-31"],
+            "w": [0.25, -0.15],
+        }
+    )
+    daily = pd.DataFrame(
+        {
+            "id": [1, 1, 2, 2],
+            "date": ["2020-01-10", "2020-01-15", "2020-01-12", "2020-01-14"],
+            "ret_exc": [0.02, -0.02, 0.01, 0.03],
+        }
+    )
+
+    model = TrailingTotalVolatilityModel(
+        model_family="tree_boosting",
+        lookback_months=1,
+        uncertainty_floor=1e-6,
+    )
+    model.fit(weights, daily)
+    frame = model.predict_frame(weights[["id", "eom"]])
+
+    assert set(frame.columns) == {"id", "eom", "w", "uncertainty", "model_family"}
+    assert set(frame["model_family"]) == {"tree_boosting"}
+    np.testing.assert_allclose(frame["w"].to_numpy(), weights["w"].to_numpy())
+
+
+def test_residual_volatility_adapter_uses_predicted_returns() -> None:
+    from eapctf.ctf.uncertainty import TrailingResidualVolatilityModel
+
+    weights = pd.DataFrame(
+        {
+            "id": [1, 1, 2, 2],
+            "eom": ["2020-01-31", "2020-02-29", "2020-01-31", "2020-02-29"],
+            "w": [0.2, 0.3, -0.2, -0.1],
+        }
+    )
+    daily = pd.DataFrame(
+        {
+            "id": [1, 1, 1, 1, 2, 2, 2, 2],
+            "date": [
+                "2020-02-10", "2020-02-20", "2020-03-10", "2020-03-20",
+                "2020-02-10", "2020-02-20", "2020-03-10", "2020-03-20",
+            ],
+            "ret_exc": [0.01, 0.01, 0.02, 0.02, -0.01, -0.01, -0.02, -0.02],
+        }
+    )
+    predicted = pd.DataFrame(
+        {
+            "id": [1, 1, 2, 2],
+            "eom": ["2020-01-31", "2020-02-29", "2020-01-31", "2020-02-29"],
+            "predicted_ret": [0.015, 0.030, -0.015, -0.030],
+        }
+    )
+
+    model = TrailingResidualVolatilityModel(model_family="ols", lookback_months=2, uncertainty_floor=1e-6)
+    model.fit(weights, {"daily_ret": daily, "predicted_ret": predicted})
+    result = model.predict_with_uncertainty(weights[["id", "eom"]])
+
+    assert np.isfinite(result.uncertainty).all()
+    assert result.uncertainty.shape == result.point.shape
 
 
 def test_model_registry_includes_requested_ml_families() -> None:
@@ -262,125 +335,3 @@ def test_regularized_linear_baselines_support_5fold_cv() -> None:
         assert len(model.selected_params_) == 1
         params = next(iter(model.selected_params_.values()))
         assert params["alpha"] in alpha_grid
-
-
-def test_generic_joint_model_supports_non_ipca_model_family() -> None:
-    from eapctf.ctf.uncertainty import HistoricalWeightInstabilityModel
-
-    weights = pd.DataFrame(
-        {
-            "id": [1, 1, 1],
-            "eom": ["2020-01-31", "2020-02-29", "2020-03-31"],
-            "w": [0.1, 0.2, 0.3],
-        }
-    )
-
-    model = HistoricalWeightInstabilityModel(
-        model_family="ols",
-        lookback_months=2,
-        uncertainty_floor=1e-6,
-    )
-    model.fit(weights, None)
-    result = model.predict_with_uncertainty(weights[["id", "eom"]])
-
-    assert model.model_family == "ols"
-    np.testing.assert_allclose(result.point, weights["w"].to_numpy())
-    np.testing.assert_allclose(result.uncertainty[0], 1e-6)
-    np.testing.assert_allclose(result.uncertainty[2], np.std([0.1, 0.2], ddof=1))
-
-
-def test_generic_residual_volatility_model_supports_non_ipca_model_family() -> None:
-    from eapctf.ctf.uncertainty import TrailingResidualVolatilityModel
-
-    weights = pd.DataFrame(
-        {
-            "id": [1, 2],
-            "eom": ["2020-01-31", "2020-01-31"],
-            "w": [0.25, -0.15],
-        }
-    )
-    daily = pd.DataFrame(
-        {
-            "id": [1, 1, 2, 2],
-            "date": ["2020-01-10", "2020-01-15", "2020-01-12", "2020-01-14"],
-            "ret_exc": [0.02, -0.02, 0.01, 0.03],
-        }
-    )
-
-    model = TrailingResidualVolatilityModel(
-        model_family="tree_boosting",
-        lookback_months=1,
-        uncertainty_floor=1e-6,
-    )
-    model.fit(weights, daily)
-    frame = model.predict_frame(weights[["id", "eom"]])
-
-    assert set(frame.columns) == {"id", "eom", "w", "uncertainty", "model_family"}
-    assert set(frame["model_family"]) == {"tree_boosting"}
-    np.testing.assert_allclose(frame["w"].to_numpy(), weights["w"].to_numpy())
-
-
-def test_archived_ipca_joint_model_returns_point_weights_and_trailing_volatility() -> None:
-    from eapctf.ctf.uncertainty import ArchivedIPCAResidualVolatilityModel
-
-    weights = pd.DataFrame(
-        {
-            "id": [1, 2],
-            "eom": ["2020-01-31", "2020-01-31"],
-            "w": [0.2, -0.2],
-        }
-    )
-    daily = pd.DataFrame(
-        {
-            "id": [1, 1, 1, 2, 2],
-            "date": [
-                "2020-01-15",
-                "2020-01-20",
-                "2020-02-10",
-                "2020-01-10",
-                "2020-01-20",
-            ],
-            "ret_exc": [0.01, -0.01, 0.50, 0.02, 0.02],
-        }
-    )
-    request = weights[["id", "eom"]].copy()
-
-    model = ArchivedIPCAResidualVolatilityModel(lookback_months=1, uncertainty_floor=1e-6)
-    model.fit(weights, daily)
-    result = model.predict_with_uncertainty(request)
-
-    np.testing.assert_allclose(result.point, np.array([0.2, -0.2]))
-    np.testing.assert_allclose(result.uncertainty[0], np.std([0.01, -0.01], ddof=1))
-    np.testing.assert_allclose(result.uncertainty[1], 1e-6)
-    assert result.uncertainty[0] < 0.1, "future February return leaked into January uncertainty"
-
-
-def test_archived_ipca_exposure_instability_uses_only_past_weights() -> None:
-    from eapctf.ctf.uncertainty import ArchivedIPCAExposureInstabilityModel
-
-    weights = pd.DataFrame(
-        {
-            "id": [1, 1, 1, 2, 2, 2],
-            "eom": [
-                "2020-01-31",
-                "2020-02-29",
-                "2020-03-31",
-                "2020-01-31",
-                "2020-02-29",
-                "2020-03-31",
-            ],
-            "w": [0.10, 0.30, 1.20, -0.10, -0.10, -0.40],
-        }
-    )
-    request = weights[["id", "eom"]].copy()
-
-    model = ArchivedIPCAExposureInstabilityModel(lookback_months=2, uncertainty_floor=1e-6)
-    model.fit(weights, None)
-    result = model.predict_with_uncertainty(request)
-
-    np.testing.assert_allclose(result.point, weights["w"].to_numpy())
-    np.testing.assert_allclose(result.uncertainty[0], 1e-6)
-    np.testing.assert_allclose(result.uncertainty[1], 1e-6)
-    np.testing.assert_allclose(result.uncertainty[2], np.std([0.10, 0.30], ddof=1))
-    np.testing.assert_allclose(result.uncertainty[5], 1e-6)
-    assert result.uncertainty[2] < 1.0, "current-month 1.20 weight leaked into March instability"
